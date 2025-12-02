@@ -1,0 +1,497 @@
+---
+title: "survey2"
+author: "Luca Alioto Aldana"
+date: "2025-04-02"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "C:/Users/lucaa/OneDrive/NCST Project/01_ReplecationPackage/ADU Replication Package")
+```
+
+
+custom_colors <- c("With ADUs" = "#ADD8E6", "Without ADUs" = "#FFA07A", "ADU weighted" = "#66CDAA")
+
+
+--timberwolf: #d3d0cbff;
+--old-gold: #e2c044ff;
+--olive: #83781bff;
+--wenge: #54494bff;
+--dark-cyan: #50858bff;
+
+
+--verdigris: #75b9beff;
+--light-blue: #a8ccc9ff;
+--ash-gray: #b3d6c6ff;
+--tea-green: #dceab2ff;
+--straw: #c7d66dff
+
+
+```{r}
+library(tidyverse)
+library(stringr)
+library(dplyr)
+library(readxl)
+library(ggthemes)
+
+adu_survey = read_csv("01_data/04_survey/adu_survey68.csv")
+
+# clean data
+qualtrics_df = adu_survey %>%
+  slice(-c(1:2)) %>%
+  dplyr::select(-c(1:17))
+
+```
+
+```{r}
+
+# Q14 
+
+adu_location <- qualtrics_df %>%
+  filter(!is.na(Q14)) %>%  # Remove missing responses
+  group_by(Q14) %>%
+  summarise(Count = n()) %>%
+  mutate(percent = Count / sum(Count) * 100) # Calculate percentage
+
+sum(adu_location$Count)
+
+# Define a new custom color palette for ADU location types2
+custom_colors = c("#609", "#4C93C3", "#99D594", "#FED08B", "#FC8D59", "#D7191C")
+
+# Function to wrap long text labels
+wrap_labels <- function(labels, width = 50) {
+  str_wrap(labels, width = width)  # Wraps text at ~50 characters
+}
+
+adu_location$Q14_wrapped <- wrap_labels(adu_location$Q14, width = 50)
+
+# Create the bar chart with only the legend
+adu_location_plot <- ggplot(adu_location, aes(x = reorder(Q14_wrapped, -percent), y = percent, fill = Q14_wrapped)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = custom_colors, name = "ADU Location") +
+  scale_y_continuous(expand = c(0, 0)) +
+  labs(title = "Where Was Your ADU Built?",
+       x = NULL,
+       y = "Percent of Responses (n = 59)") +
+  theme_classic(base_size = 13, base_family = "serif") +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        panel.grid.major = element_blank(),
+        legend.position = "right",
+        legend.text = element_text(size = 14),
+        legend.title = element_text(size = 15, face = "bold"),
+        legend.key.height = unit(1.75, "cm"))
+
+adu_location_plot
+
+ggsave("04_figures/02_manuscript/adu_location_plot.png",
+       plot = adu_location_plot,
+       width = 14,
+       height = 8,
+       units = "in",
+       dpi = 300)
+```
+
+Other Responses to Q14
+
+  It was built with the main house as an attached ADU to a new main house
+  Built within an existing garage and an additional unit added to that project for a total of two ADUs
+  Detached garage demo’d, ADU in same footprint but larger.
+  
+  
+```{r}
+
+# Q16
+
+adu_use <- qualtrics_df %>%
+  filter(!is.na(Q16)) %>%  # Remove missing responses
+  separate_rows(Q16, sep = "\\.,") %>%  # Correctly split multi-select responses
+  mutate(Q16 = str_trim(Q16)) %>%  # Trim extra spaces
+  count(Q16, name = "Count") %>%  # Properly count occurrences
+  arrange(desc(Count))  # Sort by frequency
+
+adu_use <- adu_use %>%
+  mutate(Q16 = str_remove(Q16, "\\.$")) %>%  # Remove trailing period if it exists
+  mutate(Q16 = str_trim(Q16))          # Clean extra whitespace again
+
+adu_use_grouped <- adu_use %>%
+  group_by(Q16) %>%
+  summarise(Count = sum(Count), .groups = "drop")
+
+# Categorize responses into "Rental" or "Non-Rental"
+adu_use <- adu_use_grouped %>%
+  mutate(Rental_Category = ifelse(str_detect(Q16, "Rent"), "Rental", "Non-Rental"))
+
+# Function to wrap long text labels for readability
+wrap_labels <- function(labels, width = 50) {
+  str_wrap(labels, width = width)  # Wraps text at ~50 characters
+}
+
+adu_use$Q16_wrapped <- wrap_labels(adu_use$Q16, width = 50)
+
+# Split data into Rental and Non-Rental groups
+adu_rental <- adu_use %>% filter(Rental_Category == "Rental")
+adu_non_rental <- adu_use %>% filter(Rental_Category == "Non-Rental")
+
+# Add percentages to each group
+adu_rental <- adu_rental %>%
+  mutate(Percent = Count / sum(Count) * 100)
+
+sum(adu_rental$Count) # 40 
+
+adu_non_rental <- adu_non_rental %>%
+  mutate(Percent = Count / sum(Count) * 100)
+
+sum(adu_non_rental$Count) # 62
+
+# Manually defined colors for consistency
+
+custom_colors = c("#609FCA", "#99D594", "#FED08B", "#FC8D59", "#D7191C")
+
+# Rental ADU Uses Bar Plot
+rental_plot <- ggplot(adu_rental, aes(x = reorder(Q16_wrapped, -Percent), y = Percent, fill = Q16_wrapped)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = custom_colors, name = "Rental ADU Use") +
+  scale_y_continuous(expand = c(0, 0)) +  # Removes gap at bottom
+  labs(title = "How Are ADUs Used for Rentals?",
+       x = NULL,
+       y = "Percentage of Responses (n = 40)") +
+  theme_classic(base_size = 13, base_family = "serif") +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank(),
+        legend.position = "right",
+        legend.text = element_text(size = 14),
+        legend.title = element_text(size = 15, face = "bold"),
+        legend.key.height = unit(1.75, "cm"))
+
+ggsave("04_figures/02_manuscript/rental_use_plot.png",
+       plot = rental_plot,
+       width = 14,
+       height = 8,
+       units = "in",
+       dpi = 300)
+
+custom_colors <- c(
+  "#6BAED6",  # soft blue
+  "#D7191C",   # strong red
+  "#99D594",  # minty green
+  "#50858bff",  # soft yellow-orange
+  "#FED08B",  # soft yellow-orange
+  "#FC8D59"  # medium orange
+)
+
+
+# Non-Rental ADU Uses Bar Plot
+non_rental_plot <- ggplot(adu_non_rental, aes(x = reorder(Q16_wrapped, -Percent), y = Percent, fill = Q16_wrapped)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = custom_colors, name = "Non-Rental ADU Use") +
+  scale_y_continuous(expand = c(0, 0)) +  # Removes gap at bottom
+  labs(title = "How Are ADUs Used for Non-Rental Purposes?",
+       x = NULL,
+       y = "Percentage of Responses (n = 62)") +
+  theme_classic(base_size = 13, base_family = "serif") +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank(),
+        legend.position = "right",
+        legend.text = element_text(size = 14),
+        legend.title = element_text(size = 15, face = "bold"),
+        legend.key.height = unit(1.75, "cm"))
+
+ggsave("04_figures/02_manuscript/non_rental_use_plot.png",
+       plot = non_rental_plot,
+       width = 14,
+       height = 8,
+       units = "in",
+       dpi = 300)
+
+rental_plot
+non_rental_plot
+```
+
+Other Responses to Q16
+  
+  Units have been sold
+  My mom lives in the ADU.
+  Mid term rental to visiting nurses.
+  Furnished Finders app that is geared to traveling workers.
+  
+```{r}
+# Q18 
+
+# Filter and clean ADU rental price data
+adu_rent <- qualtrics_df %>%
+  filter(!is.na(Q18_1)) %>%  # Remove missing responses
+  mutate(Q18 = as.numeric(Q18_1))  # Convert rent column to numeric
+
+# Calculate ADU rental statistics
+adu_avg_rent <- mean(adu_rent$Q18, na.rm = TRUE)  # ADU rent average
+adu_avg_rent_exclude_0 <- mean(adu_rent$Q18[adu_rent$Q18 != 0], na.rm = TRUE)  # ADU rent excluding $0
+city_med_rent <- 1250  # Replace with actual citywide median rent
+
+# Create initial histogram
+histogram_plot <- ggplot(adu_rent, aes(x = Q18)) +
+  geom_histogram(binwidth = 250, fill = "#6BAED6", , color = "black", alpha = 0.7) +
+  
+  # Add vertical lines for each rental average (without text labels)
+  geom_vline(aes(xintercept = adu_avg_rent, color = "Reported ADU Average Rent"), linetype = "dashed", size = 1) +
+  geom_vline(aes(xintercept = city_med_rent, color = "Sacramento Median Rent (2021)"), linetype = "dashed", size = 1) +
+  geom_vline(aes(xintercept = adu_avg_rent_exclude_0, color = "Reported ADU Average Rent (Excl. $0)"), linetype = "dashed", size = 1) +
+  
+  # Define the manual legend
+  scale_color_manual(name = "Legend",
+                     values = c("Reported ADU Average Rent" = "blue", 
+                                "Sacramento Median Rent (2021)" = "red", 
+                                "Reported ADU Average Rent (Excl. $0)" = "#609")) +
+  scale_y_continuous(expand = c(0, 0)) +  # Removes gap at bottom
+  # Labels and theme
+  labs(title = "Distribution of ADU Monthly Rent Prices",
+       x = "Monthly Rent ($)",
+       y = "Number of ADUs") +
+  theme_classic(base_size = 13, base_family = "serif") +
+  theme(legend.position = "right",  # Move legend to the side
+        legend.text = element_text(size = 14),  # Make legend larger
+        legend.title = element_text(size = 15, face = "bold"),
+        legend.key.height = unit(1.5, "cm"))  # Increase spacing between legend items
+
+
+# Print the updated histogram with legend and side labels
+print(histogram_plot)
+```
+
+```{r}
+# Q9  
+
+# Clean and summarize Q9 (Off-Street Parking Spaces)
+parking_spaces <- qualtrics_df %>%
+  filter(!is.na(Q9_1)) %>%  # Remove missing values
+  mutate(Q9 = as.numeric(Q9_1))  # Convert to numeric
+
+# Summary statistics
+parking_stats <- parking_spaces %>%
+  summarise(
+    min_spaces = min(Q9, na.rm = TRUE),
+    max_spaces = max(Q9, na.rm = TRUE),
+    mean_spaces = mean(Q9, na.rm = TRUE),
+    median_spaces = median(Q9, na.rm = TRUE),
+    total_responses = n()
+  )
+
+print(parking_stats)
+
+# Histogram of Off-Street Parking Spaces
+parking_histogram <- ggplot(parking_spaces, aes(x = Q9)) +
+  geom_histogram(binwidth = 1, fill = "#1B9E77", color = "black", alpha = 0.7) +
+  scale_x_continuous(breaks = seq(1, 10, 1)) +
+  labs(title = "Distribution of Off-Street Parking Spaces",
+       x = "Number of Off-Street Parking Spaces",
+       y = "Number of Responses") +
+  theme_minimal()
+
+# Print the histogram
+print(parking_histogram)
+
+```
+
+
+```{r}
+
+# Q 15.1 
+
+names(qualtrics_df)
+
+# Filter and clean parking data
+parking_data <- qualtrics_df %>%
+  filter(!is.na(`15.1_1`) | !is.na(`15.1_2`)) %>%  # Keep responses with valid data
+  mutate(
+    spaces_removed = as.numeric(`15.1_1`),
+    spaces_added = as.numeric(`15.1_2`),
+    net_change = spaces_added - spaces_removed  # Calculate net parking change
+  )
+
+# Summary statistics
+parking_summary <- parking_data %>%
+  summarise(
+    total_removed = sum(spaces_removed, na.rm = TRUE),
+    total_added = sum(spaces_added, na.rm = TRUE),
+    avg_removed = mean(spaces_removed, na.rm = TRUE),
+    avg_added = mean(spaces_added, na.rm = TRUE),
+    avg_net_change = mean(net_change, na.rm = TRUE)
+  )
+
+print(parking_summary)
+
+
+# Histogram of Net Parking Change
+histogram_parking <- ggplot(parking_data, aes(x = net_change)) +
+  geom_histogram(binwidth = 1, fill = "#E72", color = "black", alpha = 0.7) +
+  labs(title = "Distribution of Net Parking Spaces Added/Removed",
+       x = "Net Change in Parking Spaces",
+       y = "Number of ADUs") +
+  theme_minimal()
+
+histogram_parking
+```
+
+Q.15_2 - Please provide any additional information about how your ADU project has affected off-street parking on the lot.
+
+Summarize the changes in travel behavior after ADU construction listed by respondents.
+
+  Demoed existing garage but use the uncovered space as parking
+  If necessary, numerous vehicles can be parked on the mulch landscaping behind the main house and ADU.
+  We fenced off the driveway to provide an outdoor space for the units and so that area replaced one off street parking space.
+  Garage was 1920’s Model T size, probably not used for a vehicle in half a century.
+  The 1 car garage was turned into an adu, however the garage wasn’t used for parking to begin with
+  At most, two cars park on the street for easier access. But my project has improved due to a new and much bigger driveway.   If needed, we could park up to 5 maybe six small cars in driveway.
+  Went from 4 surface spaces in driveway to 2 covered spaces in a garage
+  
+```{r}
+
+# Q20 - Summarize where ADU tenants park their cars.
+
+# Clean and summarize parking responses (removing NA values)
+parking_summary <- qualtrics_df %>%
+  dplyr::select(Q20_1, Q20_2, Q20_3) %>%  # Select relevant parking columns
+  pivot_longer(cols = everything(), names_to = "Parking_Location", values_to = "Frequency") %>%
+  filter(!is.na(Frequency)) %>%  # Remove NA values
+  group_by(Parking_Location, Frequency) %>%
+  summarise(Count = n(), .groups = "drop")
+
+# Rename categories for clarity
+parking_summary$Parking_Location <- recode(parking_summary$Parking_Location,
+                                           "Q20_1" = "On the Street",
+                                           "Q20_2" = "Driveway/Carport (Primary House)",
+                                           "Q20_3" = "Driveway/Carport (ADU)")
+
+# Define custom colors for responses
+custom_colors <- c("Never" = "#FED08B", "Sometimes" = "#1B9E77", "Always" = "#6BAED6")
+
+# Create a stacked bar chart
+parking_plot <- ggplot(parking_summary, aes(x = Parking_Location, y = Count, fill = Frequency)) +
+  geom_bar(stat = "identity", position = "fill") +  # Fill for percentage visualization
+  scale_fill_manual(values = custom_colors, name = "Parking Frequency") +
+  scale_y_continuous(labels = scales::percent_format(), expand = c(0, 0)) +
+  labs(title = "Where Do ADU Tenants Park Their Cars?",
+       x = "Parking Location",
+       y = "Proportion of Responses") +
+    theme_classic(base_size = 13, base_family = "serif") +
+  theme(legend.text = element_text(size = 14),
+        legend.title = element_text(size = 14, face = "bold"),
+        legend.key.height = unit(1.5, "cm"))
+
+# Print the plot
+print(parking_plot)
+```
+
+
+```{r}
+
+#  Q27 - n = 20 avg of 2 per household, pervous averge was 1.68 per household
+
+# Clean and summarize Q9 (Off-Street Parking Spaces)
+parking_spaces <- qualtrics_df %>%
+  filter(!is.na(Q27_1)) %>%  # Remove missing values
+  mutate(Q27 = as.numeric(Q27_1))  # Convert to numeric
+
+# Summary statistics
+parking_stats <- parking_spaces %>%
+  summarise(
+    min_spaces = min(Q27, na.rm = TRUE),
+    max_spaces = max(Q27, na.rm = TRUE),
+    mean_spaces = mean(Q27, na.rm = TRUE),
+    median_spaces = median(Q27, na.rm = TRUE),
+    total_responses = n()
+  )
+
+print(parking_stats)
+
+# Histogram of Off-Street Parking Spaces
+parking_histogram <- ggplot(parking_spaces, aes(x = Q9)) +
+  geom_histogram(binwidth = 1, fill = "#1B9E77", color = "black", alpha = 0.7) +
+  scale_x_continuous(breaks = seq(1, 10, 1)) +
+  labs(title = "Distribution of Off-Street Parking Spaces",
+       x = "Number of Off-Street Parking Spaces",
+       y = "Number of Responses") +
+  theme_minimal()
+```
+
+Q19_1: How many automobiles do your ADU tenant(s) own (or lease)? - Number of Cars
+
+```{r}
+# Bar chart for Q19_1
+qualtrics_df %>%
+  filter(!is.na(Q19_1)) %>%
+  ggplot(aes(x = as.factor(Q19_1))) +
+  geom_bar(fill = "#3182bd") +
+  labs(
+    title = "Number of Automobiles Owned or Leased by ADU Tenants",
+    x = "Number of Cars",
+    y = "Number of Respondents"
+  ) +
+  theme_classic(base_size = 12) 
+
+
+```
+
+^ Make percent 
+
+Make car ownership and car ownership by GEOID unique for respondents. Maybe a census question that is car ownership given home owner. Housing tenure vehicles available B25044
+
+Q29_1:Q29_7 - Please indicate how your household’s travel behavior has changed (or not) since the ADU was constructed - X thing
+
+```{r}
+
+# Select relevant travel behavior columns and assign labels
+travel_cols <- c("Q29_3", "Q29_4", "Q29_5", "Q29_6", "Q29_7")
+question_labels <- c(
+  Q29_3 = "Use ridesharing",
+  Q29_4 = "Take public transportation",
+  Q29_5 = "Use shared micromobility",
+  Q29_6 = "Bicycle",
+  Q29_7 = "Walk"
+)
+
+# Define color palette that matches response levels
+custom_colors <- c(
+  "Less" = "#FC8D59",       # reddish-orange
+  "The Same" = "#FED08B",   # soft yellow-orange
+  "More" = "#99D594"        # green
+)
+
+# Prepare the data
+travel_summary <- qualtrics_df %>%
+  select(all_of(travel_cols)) %>%
+  pivot_longer(cols = everything(), names_to = "mode", values_to = "response") %>%
+  filter(!is.na(response)) %>%
+  mutate(
+    mode = recode(mode, !!!question_labels),
+    response = factor(response, levels = c("Less", "The Same", "More"))
+  ) %>%
+  group_by(mode, response) %>%
+  summarise(Count = n(), .groups = "drop") %>%
+  group_by(mode) %>%
+  mutate(Percent = Count / sum(Count) * 100) %>%
+  ungroup()
+
+# Plot the results
+ggplot(travel_summary, aes(x = mode, y = Percent, fill = response)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = custom_colors, name = "Change") +
+  scale_y_continuous(expand = c(0, 0)) +  # Percent format
+  labs(
+    title = "Changes in Travel Behavior After ADU Construction",
+    x = "Mode of Travel",
+    y = "Percent of Respondents"
+  ) +
+  theme_classic(base_size = 13, base_family = "serif") +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+
+```
+
+  
+
